@@ -2,6 +2,10 @@ package sample;
 
 import javafx.application.Application;
 import javafx.application.Platform;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.value.ObservableValue;
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.scene.Scene;
 import javafx.scene.control.Menu;
 import javafx.scene.control.MenuBar;
@@ -17,27 +21,35 @@ import java.sql.*;
 import java.util.*;
 import javafx.scene.control.ButtonType;
 import javafx.scene.control.Alert;
+import javafx.util.Callback;
 
 
 public class Main extends Application {
 
     public Statement statement;
     Connection conn = null;
+    //TABLE VIEW AND DATA
+    private ObservableList<ObservableList> data;
+    private TableView tableview;
+
+
     @Override
     public void start(Stage primaryStage) {
+        loginDialog();
 
         primaryStage.setTitle("Main Window");
         BorderPane root = new BorderPane();
         Scene scene = new Scene(root, 600, 250, Color.WHITE);
+        tableview = new TableView();
 
         Pane area = new Pane();
         root.setCenter(area);
 
+        root.setCenter(tableview);
+
         MenuBar menuBar = new MenuBar();
         menuBar.prefWidthProperty().bind(primaryStage.widthProperty());
         root.setTop(menuBar);
-
-
 
         // File menu - exit
         Menu fileMenu = new Menu("_File");
@@ -55,13 +67,13 @@ public class Main extends Application {
 
         Menu view = new Menu("_View");
         MenuItem alert1 = new MenuItem("Alert1");
-        alert1.setOnAction(actionEvent -> getDatabaseMetaData() );
+        alert1.setOnAction(actionEvent -> loginDialog() );
 
         MenuItem alert2 = new MenuItem("Alert2");
         alert2.setOnAction(actionEvent -> loginDialog() );
 
-        MenuItem alert3 = new MenuItem("Alert3");
-        //alert3.setOnAction(actionEvent -> showAlert3() );
+        MenuItem alert3 = new MenuItem("Data");
+        alert3.setOnAction(actionEvent ->  buildData(getDatabaseTableName()) );
 
 
 
@@ -71,8 +83,6 @@ public class Main extends Application {
 
         primaryStage.setScene(scene);
         primaryStage.show();
-
-        loginDialog();
 
 
 
@@ -105,7 +115,7 @@ public class Main extends Application {
 
         // For faster connectivity
         dbHostname.setText("localhost");
-        dbName.setText("demo");
+        dbName.setText("classicmodels");
         dbUsername.setText("root");
         dbPassword.setText("");
 
@@ -150,7 +160,7 @@ public class Main extends Application {
             System.out.println("Username= " + usernamePassword.get(0) + ", Password= " + usernamePassword.get(1));
         });
     }
-    public void getDatabaseMetaData() {
+    public String getDatabaseTableName() {
         try {
 
             DatabaseMetaData dbmd = conn.getMetaData();
@@ -158,18 +168,21 @@ public class Main extends Application {
             ResultSet rs = dbmd.getTables(null, null, "%", types);
             while (rs.next()) {
                 System.out.println(rs.getString("TABLE_NAME"));
+                String tableName = rs.getString("TABLE_NAME");
+                return tableName;
             }
         }
         catch (SQLException e) {
             e.printStackTrace();
         }
+        return null;
     }
     public void showAlert(String str) {
         Alert a = new Alert(Alert.AlertType.INFORMATION);
         a.setHeaderText(str);
         a.showAndWait();
     }
-
+    //CONNECTION DATABASE
     public void DatabaseConnect(String dbHostname, String dbName, String dbUsername, String dbPassword) {
         try {
             conn = DriverManager.getConnection("jdbc:mysql://"+dbHostname+"/" + dbName, dbUsername, dbPassword);
@@ -181,8 +194,50 @@ public class Main extends Application {
             showAlert("Couldn't connect to database\n" + e);
         }
     }
+    //SHOW DATA INTO TABLEVIEW
+
+    public void buildData(String tableName) {
+        data = FXCollections.observableArrayList();
+        try {
+            //SQL FOR SELECTING ALL OF CUSTOMER
+            String SQL = "SELECT * FROM " +tableName;
+            //ResultSet
+            ResultSet rs = statement.executeQuery(SQL);
+
+            for (int i = 0; i < rs.getMetaData().getColumnCount(); i++) {
+                //We are using non property style for making dynamic table
+                final int j = i;
+                TableColumn col = new TableColumn(rs.getMetaData().getColumnName(i + 1));
+                col.setCellValueFactory(new Callback<TableColumn.CellDataFeatures<ObservableList, String>, ObservableValue<String>>() {
+                    public ObservableValue<String> call(TableColumn.CellDataFeatures<ObservableList, String> param) {
+                        return new SimpleStringProperty(param.getValue().get(j).toString());
+                    }
+                });
+
+                tableview.getColumns().addAll(col);
+                System.out.println("Column [" + i + "] ");
+            }
 
 
+            while (rs.next()) {
+                //Iterate Row
+                ObservableList<String> row = FXCollections.observableArrayList();
+                for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
+                    //Iterate Column
+                    row.add(rs.getString(i));
+                }
+                System.out.println("Row [1] added " + row);
+                data.add(row);
+
+            }
+
+            //FINALLY ADDED TO TableView
+            tableview.setItems(data);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Error on Building Data");
+        }
+    }
     public static void main(String[] args) {
         launch(args);
     }
